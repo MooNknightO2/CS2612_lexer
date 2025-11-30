@@ -20,7 +20,6 @@ struct Lexer {
     int* dfa_accepting_rules;
     int dfa_size;
 };
-necc
 int char_in_set(char c, struct char_set* cs);
 struct char_set* create_char_set_from_range(char start, char end);
 struct char_set* create_char_set_from_chars(char* chars, int n);
@@ -36,7 +35,7 @@ int* get_epsilon_closure(struct finite_automata* nfa, int state, int* size);
 struct char_set* get_alphabet(struct finite_automata* nfa);
 StateSet* move(struct finite_automata* nfa, StateSet* set, char c);
 
-// ==================== NFA合并函数 ====================
+
 struct finite_automata* combine_nfas(struct finite_automata** nfas, int num_nfas, int** accepting_states, int* num_accepting);
 
 // ==================== DFA转换函数 ====================

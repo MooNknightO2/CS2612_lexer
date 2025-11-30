@@ -256,37 +256,29 @@ StateSet* move(struct finite_automata* nfa, StateSet* set, char c) {
     return create_state_set(states, reach_count, -1);
 }
 
-// NFA到DFA转换（完整实现）
+// NFA2DFA
 struct finite_automata* nfa_to_dfa(struct finite_automata* nfa, int* accepting_states, int num_accepting, int* dfa_accepting_rules) {
     struct finite_automata* dfa = create_empty_graph();
     if (!dfa) return NULL;
-    
     // 初始化接受状态数组
     for (int i = 0; i < 1000; i++) dfa_accepting_rules[i] = -1;
-    
-    // 起始状态ε-闭包
     int start_closure_size;
     int* start_states = get_epsilon_closure(nfa, 0, &start_closure_size);
     StateSet* start_set = create_state_set(start_states, start_closure_size, 0);
     sort_state_set(start_set);
     free(start_states);
-    
     // 工作列表
     StateSet** worklist = malloc(100 * sizeof(StateSet*));
     StateSet** statesets = malloc(100 * sizeof(StateSet*));
     int worklist_count = 0, stateset_count = 0;
-    
     // 添加起始状态
     worklist[worklist_count++] = start_set;
     statesets[stateset_count++] = start_set;
     start_set->id = add_one_vertex(dfa);
-    
     // 字母表
     struct char_set* alphabet = get_alphabet(nfa);
-    
     while (worklist_count > 0) {
         StateSet* current = worklist[--worklist_count];
-        
         for (unsigned int ci = 0; ci < alphabet->n; ci++) {
             char c = alphabet->c[ci];
             StateSet* moved = move(nfa, current, c);
@@ -294,12 +286,10 @@ struct finite_automata* nfa_to_dfa(struct finite_automata* nfa, int* accepting_s
                 free_state_set(moved);
                 continue;
             }
-            
             // 计算ε-闭包
             bool* closure_visited = calloc(nfa->n, sizeof(bool));
             int* closure_states = malloc(nfa->n * sizeof(int));
             int closure_size = 0;
-            
             for (int i = 0; i < moved->size; i++) {
                 int* partial_closure;
                 int partial_size;
@@ -312,19 +302,16 @@ struct finite_automata* nfa_to_dfa(struct finite_automata* nfa, int* accepting_s
                 }
                 free(partial_closure);
             }
-            
             free_state_set(moved);
             if (closure_size == 0) {
                 free(closure_visited);
                 free(closure_states);
                 continue;
             }
-            
             StateSet* new_set = create_state_set(closure_states, closure_size, -1);
             sort_state_set(new_set);
             free(closure_visited);
             free(closure_states);
-            
             // 查找是否已存在
             int found = -1;
             for (int i = 0; i < stateset_count; i++) {
@@ -334,14 +321,12 @@ struct finite_automata* nfa_to_dfa(struct finite_automata* nfa, int* accepting_s
                     break;
                 }
             }
-            
             if (found == -1) {
                 new_set->id = add_one_vertex(dfa);
                 worklist[worklist_count++] = new_set;
                 statesets[stateset_count++] = new_set;
                 found = new_set->id;
             }
-            
             // 添加DFA边
             struct char_set* single_char = malloc(sizeof(struct char_set));
             single_char->n = 1;
@@ -350,7 +335,6 @@ struct finite_automata* nfa_to_dfa(struct finite_automata* nfa, int* accepting_s
             add_one_edge(dfa, current->id, found, single_char);
         }
     }
-    
     // 标记接受状态
     for (int i = 0; i < stateset_count; i++) {
         StateSet* set = statesets[i];
@@ -363,14 +347,12 @@ struct finite_automata* nfa_to_dfa(struct finite_automata* nfa, int* accepting_s
             }
         }
     }
-    
     // 清理
     free(alphabet->c);
     free(alphabet);
     for (int i = 0; i < stateset_count; i++) free_state_set(statesets[i]);
     free(statesets);
     free(worklist);
-    
     return dfa;
 }
 
