@@ -3,7 +3,6 @@
 #include <string.h>
 #include <ctype.h>
 
-// 字符集匹配检查
 int char_in_set(char c, struct char_set* cs) {
     if (!cs || cs->n == 0) return 0;
     for (unsigned int i = 0; i < cs->n; i++) {
@@ -12,7 +11,7 @@ int char_in_set(char c, struct char_set* cs) {
     return 0;
 }
 
-// 创建字符集
+// 创建字符集的两种办法
 struct char_set* create_char_set_from_range(char start, char end) {
     struct char_set* cs = malloc(sizeof(struct char_set));
     cs->n = end - start + 1;
@@ -71,14 +70,12 @@ void sort_state_set(StateSet* set) {
 // 简化正则表达式
 struct simpl_regexp* simplify_regexp(struct frontend_regexp* fr) {
     if (!fr) return NULL;
-    
     switch (fr->t) {
         case T_FR_CHAR_SET: {
             struct char_set* cs = malloc(sizeof(struct char_set));
             copy_char_set(cs, &fr->d.CHAR_SET);
             return TS_CharSet(cs);
         }
-        
         case T_FR_SINGLE_CHAR: {
             struct char_set* cs = malloc(sizeof(struct char_set));
             cs->n = 1;
@@ -86,19 +83,16 @@ struct simpl_regexp* simplify_regexp(struct frontend_regexp* fr) {
             cs->c[0] = fr->d.SINGLE_CHAR.c;
             return TS_CharSet(cs);
         }
-        
         case T_FR_STRING: {
             char* s = fr->d.STRING.s;
             int len = strlen(s);
             if (len == 0) return TS_EmptyStr();
-            
             struct simpl_regexp* result = NULL;
             for (int i = 0; i < len; i++) {
                 struct char_set* cs = malloc(sizeof(struct char_set));
                 cs->n = 1;
                 cs->c = malloc(1);
                 cs->c[0] = s[i];
-                
                 struct simpl_regexp* char_regexp = TS_CharSet(cs);
                 if (result == NULL) {
                     result = char_regexp;
@@ -108,34 +102,28 @@ struct simpl_regexp* simplify_regexp(struct frontend_regexp* fr) {
             }
             return result;
         }
-        
         case T_FR_OPTIONAL: {
             struct simpl_regexp* r = simplify_regexp(fr->d.OPTION.r);
             return TS_Union(r, TS_EmptyStr());
         }
-        
         case T_FR_STAR: {
             struct simpl_regexp* r = simplify_regexp(fr->d.STAR.r);
             return TS_Star(r);
         }
-        
         case T_FR_PLUS: {
             struct simpl_regexp* r = simplify_regexp(fr->d.PLUS.r);
             return TS_Concat(r, TS_Star(r));
         }
-        
         case T_FR_UNION: {
             struct simpl_regexp* r1 = simplify_regexp(fr->d.UNION.r1);
             struct simpl_regexp* r2 = simplify_regexp(fr->d.UNION.r2);
             return TS_Union(r1, r2);
         }
-        
         case T_FR_CONCAT: {
             struct simpl_regexp* r1 = simplify_regexp(fr->d.CONCAT.r1);
             struct simpl_regexp* r2 = simplify_regexp(fr->d.CONCAT.r2);
             return TS_Concat(r1, r2);
         }
-        
         default:
             return NULL;
     }
@@ -145,7 +133,6 @@ struct simpl_regexp* simplify_regexp(struct frontend_regexp* fr) {
 NFAFragment regexp_to_nfa_fragment(struct finite_automata* nfa, struct simpl_regexp* sr) {
     NFAFragment frag = {-1, -1};
     if (!sr || !nfa) return frag;
-    
     switch (sr->t) {
         case T_S_EMPTY_STR: {
             frag.start = add_one_vertex(nfa);
@@ -153,14 +140,12 @@ NFAFragment regexp_to_nfa_fragment(struct finite_automata* nfa, struct simpl_reg
             add_one_edge(nfa, frag.start, frag.end, NULL);
             break;
         }
-        
         case T_S_CHAR_SET: {
             frag.start = add_one_vertex(nfa);
             frag.end = add_one_vertex(nfa);
             add_one_edge(nfa, frag.start, frag.end, &sr->d.CHAR_SET);
             break;
         }
-        
         case T_S_STAR: {
             NFAFragment inner = regexp_to_nfa_fragment(nfa, sr->d.STAR.r);
             frag.start = add_one_vertex(nfa);
@@ -171,7 +156,6 @@ NFAFragment regexp_to_nfa_fragment(struct finite_automata* nfa, struct simpl_reg
             add_one_edge(nfa, frag.start, frag.end, NULL);
             break;
         }
-        
         case T_S_UNION: {
             frag.start = add_one_vertex(nfa);
             frag.end = add_one_vertex(nfa);
@@ -183,7 +167,6 @@ NFAFragment regexp_to_nfa_fragment(struct finite_automata* nfa, struct simpl_reg
             add_one_edge(nfa, right.end, frag.end, NULL);
             break;
         }
-        
         case T_S_CONCAT: {
             NFAFragment left = regexp_to_nfa_fragment(nfa, sr->d.CONCAT.r1);
             NFAFragment right = regexp_to_nfa_fragment(nfa, sr->d.CONCAT.r2);
@@ -193,7 +176,6 @@ NFAFragment regexp_to_nfa_fragment(struct finite_automata* nfa, struct simpl_reg
             break;
         }
     }
-    
     return frag;
 }
 
@@ -210,7 +192,6 @@ void epsilon_closure(struct finite_automata* nfa, int state, int* visited, int* 
     if (visited[state]) return;
     visited[state] = 1;
     closure[(*closure_size)++] = state;
-    
     for (int e = 0; e < nfa->m; e++) {
         if (nfa->src[e] == state && nfa->lb[e].n == 0) {
             epsilon_closure(nfa, nfa->dst[e], visited, closure, closure_size);
@@ -236,21 +217,17 @@ struct char_set* get_alphabet(struct finite_automata* nfa) {
             chars[(unsigned char)lb->c[i]] = true;
         }
     }
-    
     int count = 0;
     for (int i = 0; i < 256; i++) {
         if (chars[i]) count++;
     }
-    
     struct char_set* alphabet = malloc(sizeof(struct char_set));
     alphabet->n = count;
     alphabet->c = malloc(count);
-    
     int idx = 0;
     for (int i = 0; i < 256; i++) {
         if (chars[i]) alphabet->c[idx++] = (char)i;
     }
-    
     return alphabet;
 }
 
@@ -258,7 +235,6 @@ struct char_set* get_alphabet(struct finite_automata* nfa) {
 StateSet* move(struct finite_automata* nfa, StateSet* set, char c) {
     bool* reached = calloc(nfa->n, sizeof(bool));
     int reach_count = 0;
-    
     for (int i = 0; i < set->size; i++) {
         int state = set->states[i];
         for (int e = 0; e < nfa->m; e++) {
@@ -271,13 +247,11 @@ StateSet* move(struct finite_automata* nfa, StateSet* set, char c) {
             }
         }
     }
-    
     int* states = malloc(reach_count * sizeof(int));
     int idx = 0;
     for (int i = 0; i < nfa->n; i++) {
         if (reached[i]) states[idx++] = i;
     }
-    
     free(reached);
     return create_state_set(states, reach_count, -1);
 }
