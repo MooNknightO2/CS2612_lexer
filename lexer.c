@@ -16,7 +16,7 @@ struct char_set* create_char_set_from_range(char start, char end) {
     struct char_set* cs = malloc(sizeof(struct char_set));
     cs->n = end - start + 1;
     cs->c = malloc(cs->n);
-    for (int i = 0; i < cs->n; i++) {
+    for (unsigned int i = 0; i < cs->n; i++) {
         cs->c[i] = start + i;
     }
     return cs;
@@ -394,9 +394,6 @@ struct frontend_regexp* create_digit_regex() {
 
 // Test case 2: Letter recognition
 struct frontend_regexp* create_alpha_regex() {
-    struct char_set* lower_set = create_char_set_from_range('a', 'z');
-    struct char_set* upper_set = create_char_set_from_range('A', 'Z');
-    
     // Combine upper and lower case letters
     char all_alpha[52];
     for (int i = 0; i < 26; i++) {
@@ -543,7 +540,7 @@ void print_lexical_result(char* input, int* segments, int* categories) {
     
     for (int i = 0; segments[i] != -1; i++) {
         int start = segments[i];
-        int end = (segments[i + 1] != -1) ? segments[i + 1] : strlen(input);
+        int end = (segments[i + 1] != -1) ? segments[i + 1] : (int)strlen(input);
         int length = end - start;
         
         if (length > 0) {
