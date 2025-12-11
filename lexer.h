@@ -15,6 +15,12 @@ typedef struct {
     int end;
 } NFAFragment;
 
+// ==================== 字符串标签支持 ====================
+void reset_string_token_table();
+unsigned char register_string_token(const char* s);
+const char* get_string_token_label(unsigned char token);
+bool is_string_token_char(unsigned char token);
+
 struct Lexer {
     struct finite_automata* dfa;
     int* dfa_accepting_rules;

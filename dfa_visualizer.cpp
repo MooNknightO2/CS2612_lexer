@@ -161,12 +161,7 @@ private:
         advance(); // consume "
         std::string out;
         while (!eof() && peek() != '"') {
-            char c = advance();
-            if (c == '\\') {
-                if (eof()) throw std::runtime_error("Dangling escape in string literal.");
-                c = read_escape(advance());
-            }
-            out.push_back(c);
+            out.push_back(advance());
         }
         if (peek() != '"') throw std::runtime_error("Missing closing quote for string literal.");
         advance(); // consume closing "
@@ -230,8 +225,7 @@ std::string printable_char(unsigned char c) {
     }
 }
 
-std::string format_charset(const std::vector<unsigned char>& chars, bool epsilon) {
-    if (epsilon) return "eps";
+std::string format_characters_only(const std::vector<unsigned char>& chars) {
     if (chars.empty()) return "";
     std::vector<unsigned char> sorted = chars;
     std::sort(sorted.begin(), sorted.end());
@@ -253,6 +247,48 @@ std::string format_charset(const std::vector<unsigned char>& chars, bool epsilon
     }
     if (multiple) oss << "]";
     return oss.str();
+}
+
+std::string format_charset(const std::vector<unsigned char>& chars, bool epsilon) {
+    if (epsilon) return "eps";
+    if (chars.empty()) return "";
+    std::vector<unsigned char> sorted = chars;
+    std::sort(sorted.begin(), sorted.end());
+    sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+
+    std::vector<unsigned char> char_only;
+    std::vector<unsigned char> string_tokens;
+    for (unsigned char c : sorted) {
+        if (is_string_token_char(c)) {
+            string_tokens.push_back(c);
+        } else {
+            char_only.push_back(c);
+        }
+    }
+
+    std::vector<std::string> parts;
+    if (!char_only.empty()) {
+        parts.push_back(format_characters_only(char_only));
+    }
+    for (unsigned char token : string_tokens) {
+        const char* label = get_string_token_label(token);
+        if (label) {
+            std::ostringstream os;
+            os << "\"" << label << "\"";
+            parts.push_back(os.str());
+        } else {
+            parts.push_back(printable_char(token));
+        }
+    }
+
+    if (parts.empty()) return "";
+    if (parts.size() == 1) return parts[0];
+    std::ostringstream merged;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i > 0) merged << " | ";
+        merged << parts[i];
+    }
+    return merged.str();
 }
 
 struct EdgeAggregate {
@@ -379,7 +415,7 @@ void draw_state(Graphics& g, const PointF& pos, float radius, int id, bool accep
     g.DrawString(wid.c_str(), -1, &font, layout, &format, &text_brush);
 }
 
-void draw_edge(Graphics& g, const PointF& from, const PointF& to, float state_radius, const std::string& label, bool self_loop, const std::vector<PointF>& nodes, int src, int dst) {
+void draw_edge(Graphics& g, const PointF& from, const PointF& to, float state_radius, const std::string& label, bool self_loop, const std::vector<PointF>& nodes, int src, int dst, bool has_reverse) {
     AdjustableArrowCap arrow(6.0f, 8.0f, TRUE);
     Pen pen(Color(255, 50, 50, 50), 2.0f);
     pen.SetCustomEndCap(&arrow);
@@ -467,9 +503,10 @@ void draw_edge(Graphics& g, const PointF& from, const PointF& to, float state_ra
 
     GraphicsPath path;
     PointF label_mid;
-    if (need_curve) {
+    PointF normal(static_cast<REAL>(-ny), static_cast<REAL>(nx));
+    bool use_curve = need_curve;
+    if (use_curve) {
         PointF mid(static_cast<REAL>((start.X + end.X) * 0.5f), static_cast<REAL>((start.Y + end.Y) * 0.5f));
-        PointF normal(static_cast<REAL>(-ny), static_cast<REAL>(nx));
         float base_offset = state_radius * 2.0f;
         float extra = static_cast<float>((static_cast<int>(std::fabs(from.X + from.Y + to.X + to.Y)) % 8)) * 3.0f; // 0~21
         float curve_offset = base_offset + extra;
@@ -487,6 +524,14 @@ void draw_edge(Graphics& g, const PointF& from, const PointF& to, float state_ra
     } else {
         path.AddLine(start, end);
         label_mid = PointF(static_cast<REAL>((start.X + end.X) * 0.5f), static_cast<REAL>((start.Y + end.Y) * 0.5f));
+    }
+
+    // 标签额外偏移，避免双向边文字重叠（即便走直线也偏移）
+    if (has_reverse) {
+        float label_shift_n = 12.0f * (src > dst ? -1.0f : 1.0f); // 区分方向
+        float label_shift_t = 8.0f; // 沿切向微移
+        label_mid.X += normal.X * label_shift_n + static_cast<REAL>(nx * label_shift_t);
+        label_mid.Y += normal.Y * label_shift_n + static_cast<REAL>(ny * label_shift_t);
     }
 
     g.DrawPath(&pen, &path);
@@ -537,7 +582,16 @@ void render_dfa(struct finite_automata* dfa, int* accepting_rules, const std::st
     for (const auto& e : edges) {
         std::string label = format_charset(e.chars, e.epsilon);
         bool self_loop = e.src == e.dst;
-        draw_edge(g, positions[e.src], positions[e.dst], radius, label, self_loop, positions, e.src, e.dst);
+        bool has_reverse = false;
+        if (!self_loop) {
+            for (const auto& other : edges) {
+                if (other.src == e.dst && other.dst == e.src && other.epsilon == e.epsilon) {
+                    has_reverse = true;
+                    break;
+                }
+            }
+        }
+        draw_edge(g, positions[e.src], positions[e.dst], radius, label, self_loop, positions, e.src, e.dst, has_reverse);
     }
 
     for (int i = 0; i < dfa->n; i++) {
@@ -597,6 +651,7 @@ int main() {
         if (input == "quit") break;
         if (input.empty()) continue;
         try {
+            reset_string_token_table();
             Parser parser(input);
             frontend_regexp* fr = parser.parse();
             simpl_regexp* sr = simplify_regexp(fr);

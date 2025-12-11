@@ -3,6 +3,59 @@
 #include <string.h>
 #include <ctype.h>
 
+#define STRING_TOKEN_BASE 128
+static unsigned char next_string_token = STRING_TOKEN_BASE;
+static char** string_token_values = NULL;
+static int string_token_count = 0;
+
+static int find_string_token(const char* s) {
+    if (!s) return -1;
+    for (int i = 0; i < string_token_count; i++) {
+        if (strcmp(string_token_values[i], s) == 0) return i;
+    }
+    return -1;
+}
+
+void reset_string_token_table() {
+    for (int i = 0; i < string_token_count; i++) {
+        free(string_token_values[i]);
+    }
+    free(string_token_values);
+    string_token_values = NULL;
+    string_token_count = 0;
+    next_string_token = STRING_TOKEN_BASE;
+}
+
+unsigned char register_string_token(const char* s) {
+    if (!s) return 0;
+    int existing = find_string_token(s);
+    if (existing >= 0) {
+        return (unsigned char)(STRING_TOKEN_BASE + existing);
+    }
+    if (next_string_token == 0) { // overflow protection
+        return (unsigned char)255;
+    }
+    unsigned char token = next_string_token++;
+    char** resized = realloc(string_token_values, (string_token_count + 1) * sizeof(char*));
+    if (!resized) {
+        return token;
+    }
+    string_token_values = resized;
+    string_token_values[string_token_count] = strdup(s);
+    string_token_count++;
+    return token;
+}
+
+bool is_string_token_char(unsigned char token) {
+    int idx = (int)token - STRING_TOKEN_BASE;
+    return idx >= 0 && idx < string_token_count;
+}
+
+const char* get_string_token_label(unsigned char token) {
+    if (!is_string_token_char(token)) return NULL;
+    return string_token_values[(int)token - STRING_TOKEN_BASE];
+}
+
 int char_in_set(char c, struct char_set* cs) {
     if (!cs || cs->n == 0) return 0;
     for (unsigned int i = 0; i < cs->n; i++) {
@@ -87,20 +140,12 @@ struct simpl_regexp* simplify_regexp(struct frontend_regexp* fr) {
             char* s = fr->d.STRING.s;
             int len = strlen(s);
             if (len == 0) return TS_EmptyStr();
-            struct simpl_regexp* result = NULL;
-            for (int i = 0; i < len; i++) {
-                struct char_set* cs = malloc(sizeof(struct char_set));
-                cs->n = 1;
-                cs->c = malloc(1);
-                cs->c[0] = s[i];
-                struct simpl_regexp* char_regexp = TS_CharSet(cs);
-                if (result == NULL) {
-                    result = char_regexp;
-                } else {
-                    result = TS_Concat(result, char_regexp);
-                }
-            }
-            return result;
+            unsigned char token = register_string_token(s);
+            struct char_set* cs = malloc(sizeof(struct char_set));
+            cs->n = 1;
+            cs->c = malloc(1);
+            cs->c[0] = (char)token;
+            return TS_CharSet(cs);
         }
         case T_FR_OPTIONAL: {
             struct simpl_regexp* r = simplify_regexp(fr->d.OPTION.r);
